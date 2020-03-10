@@ -1,0 +1,162 @@
+---
+title: "project3-test"
+author: "Hanbo JIAO"
+date: "2020/3/10"
+
+---
+
+
+```{r, eval=F}
+
+packages.used=c("gbm", "tidyverse","caret")
+
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE)
+}
+```
+
+
+```{r}
+library(caret) 
+library(gbm)
+library(tidyverse)
+load("../output/fiducial_pt_list.RData")
+```
+
+
+```{r}
+############为了之后的load/readxxx，提前设置file path###########
+
+train_dir <- "../data/train_set/" # This will be modified for different data sets.
+train_image_dir <- paste(train_dir, "images/", sep="")
+train_pt_dir <- paste(train_dir,  "points/", sep="")
+train_label_path <- paste(train_dir, "label.csv", sep="") 
+info <- read.csv(train_label_path)
+```
+
+
+
+
+```{r exp_setup}
+############设置一些参数，例如是否cross-validation, K-fold的参数，是否做各种train/test测试 ###########
+run.cv=TRUE # run cross-validation on the training set
+K <- 5  # number of CV folds
+run.feature.train=TRUE # process features for training set
+run.test=TRUE # run evaluation on an independent test set
+run.feature.test=TRUE # process features for test set
+```
+
+```{r}
+n<-length(fiducial_pt_list)
+
+# #测试 partial part
+# n<-n*0.3
+# index<-sample(1:length(fiducial_pt_list),n,replace=F)
+# n_train <- round(n*(4/5), 0)
+# train_idx <- sample(index, n_train, replace = F)
+# test_idx <- setdiff(index,train_idx)
+
+n_train <- round(n*(4/5), 0)
+train_idx <- sample(1:n, n_train, replace = F)
+test_idx <- setdiff(1:n,train_idx)
+
+
+```
+
+```{r feature}
+#############这里feature函数直接可以求出78个点与其他77个点的距离。###########
+source("../lib/feature.R")
+
+############dat_train直接得出train_idx这些图片中，所有两点间距离（78*77=6006个）###########
+tm_feature_train <- NA
+if(run.feature.train){
+  tm_feature_train <- system.time(dat_train <- feature(fiducial_pt_list, train_idx))
+}
+############data_test同理###########
+tm_feature_test <- NA
+if(run.feature.test){
+  tm_feature_test <- system.time(dat_test <- feature(fiducial_pt_list, test_idx))
+}
+
+
+# save(dat_train, file="../output/feature_train.RData")
+# save(dat_test, file="../output/feature_test.RData")
+```
+
+
+```{r}
+data=dat_train#[sample(1:2000,500,replace = F),]
+n.tree=200
+shrinkage=0.05
+inter.dep =1
+cv.folds=3
+# distribution="adaboost"    #some problem
+distribution = "multinomial"
+```
+
+```{r}
+n1<-Sys.time()
+# fit initial model
+gbm1 <-
+  gbm(emotion_idx ~.,            # formula
+    data=data,                   # dataset
+    # var.monotone=c(0,0,0,0,0,0), # -1: monotone decrease,
+    #                              # +1: monotone increase,
+    #                              #  0: no monotone restrictions
+    distribution = "multinomial",   # see the help for other choices
+    n.trees=n.tree,              # number of trees
+    shrinkage=shrinkage,         # shrinkage or learning rate,
+                                 # 0.001 to 0.1 usually work
+    interaction.depth=inter.dep, # 1: additive model, 2: two-way interactions, etc.
+    bag.fraction = 0.5,          # subsampling fraction, 0.5 is probably best
+    train.fraction = 0.5,        # fraction of data for training,
+                                 # first train.fraction*N used for training
+    n.minobsinnode = 10,         # minimum total weight needed in each node
+    cv.folds = cv.folds,                # do 3-fold cross-validation
+    keep.data=TRUE,              # keep a copy of the dataset with the object
+    verbose=FALSE,               # don't print out progress
+    n.cores=1)                   # use only a single core (detecting #cores is
+                                 # error-prone, so avoided here)
+
+```
+
+
+```{r}
+# # check performance using a 50% heldout test set
+best.iter_test <- gbm.perf(gbm1,method="test")
+print(best.iter_test)
+
+# # check performance using 5-fold cross-validation
+best.iter_cv <- gbm.perf(gbm1,method="cv")
+print(best.iter_cv)
+```
+
+```{r}
+# predict on the new data using "best" number of trees
+# f.predict generally will be on the canonical scale (logit,log,etc.)
+
+best.iter<-best.iter_cv
+# best.iter<-best.iter_test
+pred = predict.gbm(object = gbm1,
+                   newdata = dat_test,
+                   n.trees = best.iter,
+                   type = "response")
+
+labels = colnames(pred)[apply(pred, 1, which.max)]
+# least squares error
+
+result = data.frame(dat_test$emotion_idx, labels)
+acc<-mean(dat_test$emotion_idx==labels)
+
+n2<-Sys.time()-n1
+```
+
+
+
+

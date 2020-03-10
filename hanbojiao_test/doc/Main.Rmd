@@ -1,0 +1,398 @@
+---
+title: "Main"
+author: "Chengliang Tang, Yujie Wang, Tian Zheng"
+output:
+  html_document:
+    df_print: paged
+---
+In your final repo, there should be an R markdown file that organizes **all computational steps** for evaluating your proposed Facial Expression Recognition framework. 
+
+This file is currently a template for running evaluation experiments. You should update it according to your codes but following precisely the same structure. 
+
+```{r message=FALSE}
+##############下载并library各种库。###########
+
+# if(!require("EBImage")){
+#   source("https://bioconductor.org/biocLite.R")
+#   biocLite("EBImage")
+# }
+if(!require("R.matlab")){
+  install.packages("R.matlab")
+}
+if(!require("readxl")){
+  install.packages("readxl")
+}
+
+if(!require("dplyr")){
+  install.packages("dplyr")
+}
+if(!require("readxl")){
+  install.packages("readxl")
+}
+
+if(!require("ggplot2")){
+  install.packages("ggplot2")
+}
+
+if(!require("caret")){
+  install.packages("caret")
+}
+if(!require("OpenImageR")){
+  install.packages("OpenImageR")
+}
+
+library(R.matlab)
+library(readxl)
+library(dplyr)
+# library(EBImage)
+library(ggplot2)
+library(caret)
+library(OpenImageR)
+
+```
+
+### Step 0 set work directories
+```{r wkdir, eval=FALSE}
+############设置路径 （可以手动改一下）###########
+set.seed(0)
+# setwd("~/Project3-FacialEmotionRecognition/doc")
+
+# here replace it with your own path or manually set it in RStudio to where this rmd file is located. 
+# use relative path for reproducibility
+```
+
+Provide directories for training images. Training images and Training fiducial points will be in different subfolders. 
+```{r}
+############为了之后的load/readxxx，提前设置file path###########
+
+train_dir <- "../data/train_set/" # This will be modified for different data sets.
+train_image_dir <- paste(train_dir, "images/", sep="")
+train_pt_dir <- paste(train_dir,  "points/", sep="")
+train_label_path <- paste(train_dir, "label.csv", sep="") 
+```
+
+
+### Step 1: set up controls for evaluation experiments.
+
+In this chunk, we have a set of controls for the evaluation experiments. 
+
++ (T/F) cross-validation on the training set
++ (number) K, the number of CV folds
++ (T/F) process features for training set
++ (T/F) run evaluation on an independent test set
++ (T/F) process features for test set
+
+```{r exp_setup}
+############设置一些参数，例如是否cross-validation, K-fold的参数，是否做各种train/test测试 ###########
+run.cv=TRUE # run cross-validation on the training set
+K <- 5  # number of CV folds
+run.feature.train=TRUE # process features for training set
+run.test=TRUE # run evaluation on an independent test set
+run.feature.test=TRUE # process features for test set
+```
+Using cross-validation or independent test set evaluation, we compare the performance of models with different specifications. In this Starter Code, we tune parameter k (number of neighbours) for KNN.
+
+```{r model_setup}
+############设置Knn的几种情况。###########
+k = c(5,11,21,31,41,51)
+model_labels = paste("KNN with K =", k)
+```
+
+### Step 2: import data and train-test split 
+```{r}
+############拆分train test（通过train_idx）###########
+#train-test split
+info <- read.csv(train_label_path)
+n <- nrow(info)
+n_train <- round(n*(4/5), 0)
+train_idx <- sample(info$Index, n_train, replace = F)
+test_idx <- setdiff(info$Index,train_idx)
+```
+
+If you choose to extract features from images, such as using Gabor filter, R memory will exhaust all images are read together. The solution is to repeat reading a smaller batch(e.g 100) and process them. 
+```{r}
+############这里为了简便，只读取了前100张图片。（一共2500张）###########
+n_files <- length(list.files(train_image_dir))
+
+image_list <- list()
+for(i in 1:100){
+   image_list[[i]] <- readImage(paste0(train_image_dir, sprintf("%04d", i), ".jpg"))
+}
+```
+
+Fiducial points are stored in matlab format. In this step, we read them and store them in a list.
+```{r read fiducial points}
+############这里读取了2500张图片中，78个点的位置###########
+## fiducial_pt_list是个2500的list，每一个是78*2的数据，【78个点的水平垂直位置】。
+
+#function to read fiducial points
+#input: index
+#output: matrix of fiducial points corresponding to the index
+readMat.matrix <- function(index){
+     return(round(readMat(paste0(train_pt_dir, sprintf("%04d", index), ".mat"))[[1]],0))
+}
+
+#load fiducial points
+fiducial_pt_list <- lapply(1:n_files, readMat.matrix)
+save(fiducial_pt_list, file="../output/fiducial_pt_list.RData")
+```
+
+### Step 3: construct features and responses
+
++ The follow plots show how pairwise distance between fiducial points can work as feature for facial emotion recognition.
+
+  + In the first column, 78 fiducials points of each emotion are marked in order. 
+  + In the second column distributions of vertical distance between right pupil(1) and  right brow peak(21) are shown in  histograms. For example, the distance of an angry face tends to be shorter than that of a surprised face.
+  + The third column is the distributions of vertical distances between right mouth corner(50)
+and the midpoint of the upper lip(52).  For example, the distance of an happy face tends to be shorter than that of a sad face.
+
+![Figure1](../figs/feature_visualization.jpg)
+
+`feature.R` should be the wrapper for all your feature engineering functions and options. The function `feature( )` should have options that correspond to different scenarios for your project and produces an R object that contains features and responses that are required by all the models you are going to evaluate later. 
+  
+  + `feature.R`
+  + Input: list of images or fiducial point
+  + Output: an RData file that contains extracted features and corresponding responses
+
+```{r feature}
+#############这里feature函数直接可以求出78个点与其他77个点的距离。###########
+source("../lib/feature.R")
+
+############dat_train直接得出train_idx这些图片中，所有两点间距离（78*77=6006个）###########
+tm_feature_train <- NA
+if(run.feature.train){
+  tm_feature_train <- system.time(dat_train <- feature(fiducial_pt_list, train_idx))
+}
+############data_test同理###########
+tm_feature_test <- NA
+if(run.feature.test){
+  tm_feature_test <- system.time(dat_test <- feature(fiducial_pt_list, test_idx))
+}
+
+save(dat_train, file="../output/feature_train.RData")
+save(dat_test, file="../output/feature_test.RData")
+```
+
+### Step 4: Train a classification model with training features and responses
+Call the train model and test model from library. 
+
+`train.R` and `test.R` should be wrappers for all your model training steps and your classification/prediction steps. 
+
++ `train.R`
+  + Input: a data frame containing features and labels and a parameter list.
+  + Output:a trained model
++ `test.R`
+  + Input: the fitted classification model using training data and processed features from testing images 
+  + Input: an R object that contains a trained classifier.
+  + Output: training model specification
+
++ In this Starter Code, we use KNN to do classification. 
+
+
+```{r loadlib}
+############这里作者认为没必要，我还没仔细研究。###########
+############感觉下面的train相当于跑出一个svm模型，暂时不是很懂要干嘛。###########
+# source("../lib/train.R") #Since knn does not need to train, I comment this line.
+
+#下面是train.R的代码
+###########################################################
+### Train a classification model with training features ###
+###########################################################
+
+# train <- function(feature_df = pairwise_data, par = NULL){
+#   ### Train an SVM model using processed features from training images
+# 
+#   ### Input:
+#   ### - a data frame containing features and labels
+#   ### - a parameter list
+#   ### Output: trained model
+# 
+#   ### load libraries
+#   library("e1071")
+# 
+#   ### Train with SVM
+#   if(is.null(par)){
+#     gamma = 10^(-1)
+#     cost = 1
+#   } else {
+#     gamma = par$gamma
+#     cost = par$cost
+#   }
+#   #svm_model <- svm(categoryID~., data = feature_df,
+#    svm_model <- svm(emotion_idx~., data = feature_df, #这里我改了一下，感觉有问题
+#                     kernel = "radial", gamma = gamma, cost = cost)
+# 
+#   return(model = svm_model)
+# }
+
+
+
+###########这里test_knn，直接用之前得到的dat_train训练模型，然后预测dat_test对应的emotion。###########
+source("../lib/test_knn.R")
+
+#下面是test_knn.R的代码
+########################################
+### Classification with testing data ###
+########################################
+
+# test <- function(k, dat_test){
+#   
+#   ### Input: 
+#   ###  - the fitted classification model using training data
+#   ### (since knn does not need to train, we only specify k here)
+#   ###  - processed features from testing images 
+#   ### Output: training model specification
+#   
+# 
+#   
+#   ### make predictions
+#   pred <- class::knn(train = dat_train[,-which(names(dat_train) == 'emotion_idx')],   ############这里-which(names(dat_train)是为了去掉最后一列，###########
+                                                                                        ############【相当于只留下train的“x”,不要“y”】###########
+#                      test = dat_test[,-which(names(dat_test) == 'emotion_idx')], 
+#                      cl = dat_train$emotion_idx,                                      ############【train的“y”在这里用】###########
+#                      k = k)
+#   return(pred)
+# }
+
+```
+
+#### Model selection with cross-validation
+* Do model selection by choosing among different values of training model parameters.
+```{r runcv, eval=F}
+######## 通过K-fold反复进行模型测试，最后输出对应k（knn的参数）下的error的mean sd【cross validataion error】########
+source("../lib/cross_validation_knn.R")
+#下面是cross_validation_knn.R的代码
+########################
+### Cross Validation ###
+########################
+
+### Author: Chengliang Tang
+### Project 3
+# 
+# cv.function <- function(dat_train, K, k){
+#   ### Input:
+#   ### - train data frame
+#   ### - K: a number stands for K-fold CV
+#   ### - tuning parameters 
+#   
+#   n <- dim(dat_train)[1]
+#   n.fold <- round(n/K, 0)
+#   set.seed(0)
+#   s <- sample(rep(1:K, c(rep(n.fold, K-1), n-(K-1)*n.fold)))  
+#   cv.error <- rep(NA, K)
+#   
+#   for (i in 1:K){
+#     train.data <- dat_train[s != i,]
+#     test.data <- dat_train[s == i,]
+#     
+#     par <- list(k = k)
+#     knn_model <- class::knn(train = train.data[,-which(names(train.data) == 'emotion_idx')], 
+#                                    test = test.data[,-which(names(test.data) == 'emotion_idx')], 
+#                                    cl = train.data$emotion_idx, 
+#                                    k = k)
+#     
+#    
+#     error <- mean(knn_model != test.data$emotion_idx) 
+#     print(error)
+#     cv.error[i] <- error
+#     
+#   }			
+#   return(c(mean(cv.error),sd(cv.error)))
+# }
+
+#########最开始设置过是否进行cross-validation[line87]#######
+##########################这一段代码特别费时间和内存。直接load跑出来的就好#################
+# if(run.cv){
+#   #k设置等于 5 11 21 31 41 51【knn的参数】
+#   #最后输出的err_cv是一个6*2的矩阵，分别包含6种k情况下knn的error mean sd。
+#   err_cv <- matrix(0, nrow = length(k), ncol = 2)
+#   for(i in 1:length(k)){
+#     cat("k=", k[i], "\n")
+#     err_cv[i,] <- cv.function(dat_train, K, k[i])
+#   save(err_cv, file="../output/err_cv.RData")
+#   }
+# }
+load("../output/err_cv.RData")
+err_cv
+```
+
+Visualize cross-validation results. 
+```{r cv_vis}
+#########最开始设置过是否进行cross-validation[line87]#######
+#画图展示
+if(run.cv){
+  load("../output/err_cv.RData")
+  err_cv <- as.data.frame(err_cv) 
+  colnames(err_cv) <- c("mean_error", "sd_error")
+  err_cv$k = as.factor(k)
+  err_cv %>% 
+    ggplot(aes(x = k, y = mean_error,
+               ymin = mean_error - sd_error, ymax = mean_error + sd_error)) + 
+    geom_crossbar() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+}
+
+```
+
+
+* Choose the "best" parameter value
+```{r best_model}
+#########最开始设置过是否进行cross-validation[line87]#######
+if(run.cv){
+  model_best <- k[which.min(err_cv[,1])]#这里选出error sd最小的模型作为
+}
+par_best <- list(k = model_best)
+par_best
+```
+
+* Train the model with the entire training set using the selected model (model parameter) via cross-validation.
+```{r final_train}
+############这部分和下面部分我还没完全研究明白如何分开成两部分写。
+####train的部分目的是已知上面选出的par_best （k=31），通过dat_train去训练一个好的模型，最后存到fit_train里面
+
+# tm_train=NA
+# tm_train <- system.time(fit_train <- train(dat_train, par_best))
+# save(fit_train, file="../output/fit_train.RData")
+```
+
+### Step 5: Run test on test images
+```{r test}
+#######这部分test.r里面定义过，【test(model,data)等同于predict(model, dat_test)】
+# tm_test=NA
+# if(run.test){
+#   load(file="../output/fit_train.RData")
+#   ###tm_test <- system.time(pred <- test(model_best, dat_test))
+#   tm_test <- system.time(pred <- test(fit_train, dat_test))####这里按理说应该是用刚才存好的fit_train进行预测。#而不是model_best
+# }
+
+
+#######这部分和上一部分写在一起的话，可以运用类似cross_validation_knn.r里面的写法。
+####
+pred <- class::knn(train = dat_train[,-which(names(dat_train) == 'emotion_idx')],
+                                   test = dat_test[,-which(names(dat_test) == 'emotion_idx')],
+                                   cl = dat_train$emotion_idx,
+                                   k = par_best)
+```
+
+* evaluation
+```{r}
+accu <- mean(dat_test$emotion_idx == pred)
+cat("The accuracy of model:", model_labels[which.min(err_cv[,1])], "is", accu*100, "%.\n")
+
+library(caret)
+confusionMatrix(pred, dat_test$emotion_idx)  ####这里可以输出一些prediction和true value的对比。
+```
+
+Note that the accuracy is not high but is better than that of ramdom guess(4.5%). 
+
+### Summarize Running Time
+Prediction performance matters, so does the running times for constructing features and for training the model, especially when the computation resource is limited. 
+```{r running_time}
+cat("Time for constructing training features=", tm_feature_train[1], "s \n")
+cat("Time for constructing testing features=", tm_feature_test[1], "s \n")
+cat("Time for training model=", tm_train[1], "s \n")
+cat("Time for testing model=", tm_test[1], "s \n")
+```
+
+###Reference
+- Du, S., Tao, Y., & Martinez, A. M. (2014). Compound facial expressions of emotion. Proceedings of the National Academy of Sciences, 111(15), E1454-E1462.

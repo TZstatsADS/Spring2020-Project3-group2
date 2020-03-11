@@ -92,7 +92,7 @@ if(run.feature.test){
 
 ```{r}
 data=dat_train#[sample(1:2000,500,replace = F),]
-n.tree=200
+n.tree=500
 shrinkage=0.05
 inter.dep =1
 cv.folds=3
@@ -123,29 +123,33 @@ gbm1 <-
     verbose=FALSE,               # don't print out progress
     n.cores=1)                   # use only a single core (detecting #cores is
                                  # error-prone, so avoided here)
+n2<-Sys.time()-n1
 
+save(gbm1,file="../output/baseline.RData")
 ```
 
 
 ```{r}
 # # check performance using a 50% heldout test set
 best.iter_test <- gbm.perf(gbm1,method="test")
-print(best.iter_test)
+
 
 # # check performance using 5-fold cross-validation
 best.iter_cv <- gbm.perf(gbm1,method="cv")
-print(best.iter_cv)
+
 ```
 
 ```{r}
 # predict on the new data using "best" number of trees
 # f.predict generally will be on the canonical scale (logit,log,etc.)
 
-best.iter<-best.iter_cv
-# best.iter<-best.iter_test
+best.iter<-c(best.iter_test,best.iter_cv)
+
+table<-NULL
+for (i in best.iter){
 pred = predict.gbm(object = gbm1,
                    newdata = dat_test,
-                   n.trees = best.iter,
+                   n.trees = i,
                    type = "response")
 
 labels = colnames(pred)[apply(pred, 1, which.max)]
@@ -153,8 +157,10 @@ labels = colnames(pred)[apply(pred, 1, which.max)]
 
 result = data.frame(dat_test$emotion_idx, labels)
 acc<-mean(dat_test$emotion_idx==labels)
+table<-rbind(table,tibble(acc=acc))
 
-n2<-Sys.time()-n1
+}
+
 ```
 
 

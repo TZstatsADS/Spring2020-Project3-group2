@@ -1,0 +1,115 @@
+---
+title: "project3-test"
+author: "Hanbo JIAO"
+date: "2020/3/10"
+
+---
+
+
+```{r, eval=F}
+
+packages.used=c("gbm", "tidyverse","caret","e1071")
+
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE)
+}
+```
+
+
+```{r}
+library(caret) 
+library(gbm)
+library(tidyverse)
+library(e1071)
+load("../output/fiducial_pt_list.RData")
+```
+
+
+```{r}
+############为了之后的load/readxxx，提前设置file path###########
+
+train_dir <- "../data/train_set/" # This will be modified for different data sets.
+train_image_dir <- paste(train_dir, "images/", sep="")
+train_pt_dir <- paste(train_dir,  "points/", sep="")
+train_label_path <- paste(train_dir, "label.csv", sep="") 
+info <- read.csv(train_label_path)
+```
+
+
+
+
+```{r exp_setup}
+############设置一些参数，例如是否cross-validation, K-fold的参数，是否做各种train/test测试 ###########
+run.cv=TRUE # run cross-validation on the training set
+K <- 5  # number of CV folds
+run.feature.train=TRUE # process features for training set
+run.test=TRUE # run evaluation on an independent test set
+run.feature.test=TRUE # process features for test set
+```
+
+```{r}
+n<-length(fiducial_pt_list)
+
+# #测试 partial part
+# n<-n*0.3
+# index<-sample(1:length(fiducial_pt_list),n,replace=F)
+# n_train <- round(n*(4/5), 0)
+# train_idx <- sample(index, n_train, replace = F)
+# test_idx <- setdiff(index,train_idx)
+set.seed(0306)
+n_train <- round(n*(4/5), 0)
+train_idx <- sample(1:n, n_train, replace = F)
+test_idx <- setdiff(1:n,train_idx)
+
+
+```
+
+```{r feature}
+#############这里feature函数直接可以求出78个点与其他77个点的距离。###########
+source("../lib/feature.R")
+# data_unsplit <- feature(fiducial_pt_list, 1:2500)
+# save(data_unsplit, file="../output/feature_unsplit.RData")
+
+############dat_train直接得出train_idx这些图片中，所有两点间距离（78*77=6006个）###########
+# tm_feature_train <- NA
+# if(run.feature.train){
+#   tm_feature_train <- system.time(dat_train <- feature(fiducial_pt_list, train_idx))
+# }
+############data_test同理###########
+# tm_feature_test <- NA
+# if(run.feature.test){
+#   tm_feature_test <- system.time(dat_test <- feature(fiducial_pt_list, test_idx))
+# }
+
+
+# save(dat_train, file="../output/feature_train.RData")
+# save(dat_test, file="../output/feature_test.RData")
+
+
+load("../output/feature_unsplit.RData")
+dat_train<-data_unsplit[train_idx,]
+dat_test<-data_unsplit[test_idx,]
+
+```
+
+
+```{r} 
+
+
+model <- naiveBayes(emotion_idx ~ ., data = dat_train, laplace = 2)
+
+label<-predict(model, dat_test%>%select(-emotion_idx))
+
+# table(label, dat_test$emotion_idx)
+
+mean(label== dat_test$emotion_idx)
+
+```
+
+

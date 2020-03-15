@@ -61,7 +61,7 @@ n<-length(fiducial_pt_list)
 # n_train <- round(n*(4/5), 0)
 # train_idx <- sample(index, n_train, replace = F)
 # test_idx <- setdiff(index,train_idx)
-
+set.seed(0306)
 n_train <- round(n*(4/5), 0)
 train_idx <- sample(1:n, n_train, replace = F)
 test_idx <- setdiff(1:n,train_idx)
@@ -72,97 +72,184 @@ test_idx <- setdiff(1:n,train_idx)
 ```{r feature}
 #############这里feature函数直接可以求出78个点与其他77个点的距离。###########
 source("../lib/feature.R")
+# data_unsplit <- feature(fiducial_pt_list, 1:2500)
+# save(data_unsplit, file="../output/feature_unsplit.RData")
 
 ############dat_train直接得出train_idx这些图片中，所有两点间距离（78*77=6006个）###########
-tm_feature_train <- NA
-if(run.feature.train){
-  tm_feature_train <- system.time(dat_train <- feature(fiducial_pt_list, train_idx))
-}
+# tm_feature_train <- NA
+# if(run.feature.train){
+#   tm_feature_train <- system.time(dat_train <- feature(fiducial_pt_list, train_idx))
+# }
 ############data_test同理###########
-tm_feature_test <- NA
-if(run.feature.test){
-  tm_feature_test <- system.time(dat_test <- feature(fiducial_pt_list, test_idx))
-}
+# tm_feature_test <- NA
+# if(run.feature.test){
+#   tm_feature_test <- system.time(dat_test <- feature(fiducial_pt_list, test_idx))
+# }
 
 
 # save(dat_train, file="../output/feature_train.RData")
 # save(dat_test, file="../output/feature_test.RData")
+
+
+load("../output/feature_unsplit.RData")
+dat_train<-data_unsplit[train_idx,]
+dat_test<-data_unsplit[test_idx,]
+
+# write.csv(data_unsplit, "../data/train_set/data_unsplit.csv")
+# write.csv(dat_train, "../data/train_set/dat_train.csv")
+# write.csv(dat_test, "../data/train_set/dat_test.csv")
+
 ```
 
 
 ```{r}
-data=dat_train#[sample(1:2000,500,replace = F),]
-n.tree=500
-shrinkage=0.05
-inter.dep =1
-cv.folds=3
+# data=dat_train#[sample(1:2000,500,replace = F),]
+
+
+
+
+
 # distribution="adaboost"    #some problem
 distribution = "multinomial"
+
+data=data_unsplit#[sample(1:2500,1500,replace = F),]
+train_idx <- sample(1:2500, 2000, replace = F)
+test_idx <- setdiff(1:2500,train_idx)
+data_train=data[train_idx,]
+data_test=data[test_idx,]
+
+n.tree=100
+shrinkage=c(0.015)
+cv.folds=10
+
+
 ```
 
+
 ```{r}
-n1<-Sys.time()
+# data=data_unsplit[sample(1:2500,500,replace = F),]
+# train_idx <- sample(1:500, 400, replace = F)
+# test_idx <- setdiff(1:500,train_idx)
+# data_train=data[train_idx,]
+# data_test=data[test_idx,]
+# n.tree=c(30)
+# shrinkage=c(0.1)
+# inter.dep =1
+# cv.folds=c(2)
+
+
+for (i in n.tree){
+  for (j in shrinkage){
+    for (k in cv.folds){
+      
+      n1<-Sys.time()
 # fit initial model
 gbm1 <-
   gbm(emotion_idx ~.,            # formula
-    data=data,                   # dataset
+    data=data_train,                   # dataset
     # var.monotone=c(0,0,0,0,0,0), # -1: monotone decrease,
     #                              # +1: monotone increase,
     #                              #  0: no monotone restrictions
-    distribution = "multinomial",   # see the help for other choices
-    n.trees=n.tree,              # number of trees
-    shrinkage=shrinkage,         # shrinkage or learning rate,
+    distribution = distribution,   # see the help for other choices
+    n.trees=500,              # number of trees
+    shrinkage=0.05,         # shrinkage or learning rate,
                                  # 0.001 to 0.1 usually work
-    interaction.depth=inter.dep, # 1: additive model, 2: two-way interactions, etc.
-    bag.fraction = 0.5,          # subsampling fraction, 0.5 is probably best
-    train.fraction = 0.5,        # fraction of data for training,
+    interaction.depth=1, # 1: additive model, 2: two-way interactions, etc.
+    # bag.fraction = 0.5,          # subsampling fraction, 0.5 is probably best
+    # train.fraction = 0.5,        # fraction of data for training,
                                  # first train.fraction*N used for training
     n.minobsinnode = 10,         # minimum total weight needed in each node
-    cv.folds = cv.folds,                # do 3-fold cross-validation
+    cv.folds = 3,                # do 3-fold cross-validation
     keep.data=TRUE,              # keep a copy of the dataset with the object
     verbose=FALSE,               # don't print out progress
-    n.cores=1)                   # use only a single core (detecting #cores is
+    n.cores=8)                   # use only a single core (detecting #cores is
                                  # error-prone, so avoided here)
 n2<-Sys.time()-n1
 
-save(gbm1,file="../output/baseline.RData")
-```
+#save(gbm1,file="../output/baseline.RData")
 
 
-```{r}
-# # check performance using a 50% heldout test set
-best.iter_test <- gbm.perf(gbm1,method="test")
-
-
-# # check performance using 5-fold cross-validation
+# 
 best.iter_cv <- gbm.perf(gbm1,method="cv")
 
-```
 
-```{r}
 # predict on the new data using "best" number of trees
 # f.predict generally will be on the canonical scale (logit,log,etc.)
 
-best.iter<-c(best.iter_test,best.iter_cv)
 
-table<-NULL
-for (i in best.iter){
+newdata<-data_test
+
 pred = predict.gbm(object = gbm1,
-                   newdata = dat_test,
-                   n.trees = i,
+                   newdata = newdata,
+                   n.trees = best.iter_cv,
                    type = "response")
 
 labels = colnames(pred)[apply(pred, 1, which.max)]
-# least squares error
+acc<-mean(newdata$emotion_idx==labels)
+# table<-rbind(table,tibble(iter=i,acc=acc))
 
-result = data.frame(dat_test$emotion_idx, labels)
-acc<-mean(dat_test$emotion_idx==labels)
-table<-rbind(table,tibble(acc=acc))
 
+print(c(as.numeric(n2),i,j,k,best.iter_cv,acc))
+
+    }
+  }
 }
+
+
+# cm = confusionMatrix(test$Species, as.factor(labels))
+# print(cm)
 
 ```
 
 
+
+```{r}
+point_data<-fiducial_pt_list%>%unlist%>%matrix(ncol=78*2,byrow = T)%>%as_tibble
+x_train<-fiducial_pt_list[train_idx]
+x_train<-x_train%>%unlist%>%matrix(ncol=78*2,byrow = T)%>%as_tibble
+
+x_test<-fiducial_pt_list[test_idx]
+x_test<-x_test%>%unlist%>%matrix(ncol=78*2,byrow = T)%>%as_tibble
+
+y_train<-info$emotion_idx[train_idx]
+y_test<-info$emotion_idx[test_idx]
+
+train<-cbind(y_train,x_train)
+test<-cbind(y_test,x_test)
+
+gbm1 <-
+  gbm( y_train~.,            # formula
+    data=train,                   # dataset
+    distribution = "multinomial",   # see the help for other choices
+    shrinkage=0.01,         # shrinkage or learning rate,
+    interaction.depth=3, # 1: additive model, 2: two-way interactions, etc.
+    n.minobsinnode = 10,         # minimum total weight needed in each node
+    n.trees = 200,
+    cv.folds = 10,                # do 3-fold cross-validation
+    keep.data=TRUE,              # keep a copy of the dataset with the object
+    verbose=FALSE,               # don't print out progress
+    n.cores=8)                   # use only a single core (detecting #cores is
+                                 # error-prone, so avoided here)
+
+# 
+best.iter_cv <- gbm.perf(gbm1,method="cv")
+
+
+# predict on the new data using "best" number of trees
+# f.predict generally will be on the canonical scale (logit,log,etc.)
+
+newdata<-test
+
+pred = predict.gbm(object = gbm1,
+                   newdata = newdata,
+                   n.trees = best.iter_cv,
+                   type = "response")
+labels = colnames(pred)[apply(pred, 1, which.max)]
+# least squares error
+
+# result = data.frame(newdata$emotion_idx, labels)
+acc<-mean(newdata$y_test==as.numeric(labels))
+
+```
 
 

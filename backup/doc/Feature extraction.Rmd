@@ -30,8 +30,6 @@ library(OpenImageR)
 library(caret) 
 library(gbm)
 library(tidyverse)
-
-
 ```
 
 ```{r}

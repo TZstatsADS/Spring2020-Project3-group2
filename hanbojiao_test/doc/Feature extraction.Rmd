@@ -1,0 +1,74 @@
+---
+title: "project3-hanbo feature"
+author: "Hanbo JIAO"
+date: "2020/3/10"
+
+---
+
+
+```{r}
+
+packages.used=c("gbm", "tidyverse","caret","reticulate","R.matlab","readxl","dplyr","ggplot2","caret","OpenImageR","caret","gbm","tidyverse")
+
+# check packages that need to be installed.
+packages.needed=setdiff(packages.used, 
+                        intersect(installed.packages()[,1], 
+                                  packages.used))
+
+# install additional packages
+if(length(packages.needed)>0){
+  install.packages(packages.needed, dependencies = TRUE)
+}
+
+library(R.matlab)
+library(readxl)
+library(dplyr)
+# library(EBImage)
+library(ggplot2)
+library(caret)
+library(OpenImageR)
+library(caret) 
+library(gbm)
+library(tidyverse)
+```
+
+```{r}
+train_dir <- "../data/train_set/" # This will be modified for different data sets.
+train_image_dir <- paste(train_dir, "images/", sep="")
+train_pt_dir <- paste(train_dir,  "points/", sep="")
+train_label_path <- paste(train_dir, "label.csv", sep="") 
+info <- read.csv(train_label_path)
+```
+
+```{r read fiducial points}
+n_files <- length(list.files(train_image_dir))
+#function to read fiducial points
+#input: index
+#output: matrix of fiducial points corresponding to the index
+readMat.matrix <- function(index){
+     return(round(readMat(paste0(train_pt_dir, sprintf("%04d", index), ".mat"))[[1]],0))
+}
+
+#load fiducial points
+fiducial_pt_list <- lapply(1:n_files, readMat.matrix)
+save(fiducial_pt_list, file="../output/fiducial_pt_list.RData")
+```
+
+
+```{r}
+n<-length(fiducial_pt_list)
+```
+
+```{r feature}
+source("../lib/feature.R")
+data_unsplit <- feature(fiducial_pt_list, 1:2500)
+write.csv(data_unsplit, "../output/data_unsplit.csv")
+```
+
+```{r}
+source("../lib/feature_euclidean.R")
+data_unsplit_euclidean <- feature_euclidean(fiducial_pt_list, 1:2500)
+write.csv(data_unsplit_euclidean, "../output/data_unsplit_euclidean.csv")
+```
+
+

@@ -30,7 +30,7 @@ Finally, we used VotingClassifier to combine the top-performing models together 
   
   + **David Heagy** carried out the trainings using KNN and MLP Classifier. David Heagy actively took part and shared his thoughts during our weekly group discussion. 
   
-  + **Hanbo Jiao** took the lead in training the majority of the models, using GBM/Improved GBM, XGBoost, Logistics Regression, Support Vector Machine. Hanbo Jiao also took the first cut on creating our main Jupyter notebook and finalizing it. Hanbo Jiao also ran the trainings for the final VotingClassifier to combine the top-performing models. Hanbo Jiao actively took part and shared his thoughts during our weekly group discussion. 
+  + **Hanbo Jiao** took the lead in training the majority of the models, using GBM/Improved GBM, XGBoost, Logistics Regression, Support Vector Machine. Hanbo Jiao also took the first cut on creating our main Jupyter notebook, summarizing all the performance of candidate models, and finalizing it. Hanbo Jiao also ran the trainings for the final VotingClassifier to combine the top-performing models. Hanbo Jiao actively took part and shared his thoughts during our weekly group discussion. 
   
   + **Lu Cheng** carried out the training using Random Forest. Lu Cheng is the presenter for this project. 
   

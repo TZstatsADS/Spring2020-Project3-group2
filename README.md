@@ -2,7 +2,7 @@
 <img src="figs/CE.jpg" alt="Compound Emotions" width="500"/>
 (Image source: https://www.pnas.org/content/111/15/E1454)
 
-### [Full Project Description](doc/project3_desc.md)
+### [Full Project Description](doc/Main.ipynb)
 
 Term: Spring 2020
 
@@ -16,18 +16,17 @@ Term: Spring 2020
 
 + Project summary: In this project, we created a classification engine for facial emotion recognition. We trained and compared seven prediction models below. For all the candidate models, we observe the claimed accuracy, training time, and testing time. We will select the best-performing model based on these three performance parameters.
 
-+ KNN (Claimed accuracy: *30.36%*)
-+ GBM/Improved GBM (*41.92%*/*43.32%*)
-+ XGBoost (*47.12%*)
-+ Random Forest Classifier (*45.48%*)
-+ Logistics Regression (*54.00%*)
-+ Support Vector Machine (*50.04%*)
-+ MLP Classifier (*49.44%*)
+  + KNN (Claimed accuracy: **30.36%**)
+  + GBM/Improved GBM (**41.92%**/**43.32%**)
+  + XGBoost (**47.12%**)
+  + Random Forest Classifier (**45.48%**)
+  + Logistics Regression (**54.00%**)
+  + Support Vector Machine (**50.04%**)
+  + MLP Classifier (**49.44%**)
 
-Finally, we used VotingClassifier to combine the top-performing models together as the finals model, which achieve the testing accuracy of *53%*. 
+Finally, we used VotingClassifier to combine the top-performing models together as the finals model, which achieve the testing accuracy of **53%**. 
 	
-**Contribution statement** 
-All team members contributed in all stages of this project. 
++ Contribution statement: All team members contributed in all stages of this project. 
   
 **David Heagy** carried out the trainings using KNN and MLP Classifier. 
   
